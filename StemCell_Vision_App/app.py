@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 from ultralytics import YOLO
 import pandas as pd
+import os
 
 # ---------------------------------------------------------
 # 1. Cấu hình giao diện Trang web
@@ -22,7 +23,6 @@ CLASS_MAPPING = {
     'Te_Bao_Niem_Mac': 'Tế Bào Niêm Mạc',
     'Te_Bao_Phi_Dai': 'Tế Bào Phì Đại',
     'WBC': 'Bạch Cầu (WBC)',
-    # Tự động hỗ trợ nếu nhãn trên Roboflow viết thường/tiếng Anh:
     'stem_cell': 'Tế Bào Gốc',
     'epithelial': 'Tế Bào Niêm Mạc',
     'hypertrophic': 'Tế Bào Phì Đại',
@@ -61,25 +61,20 @@ enable_contrast = st.sidebar.checkbox(
 # ---------------------------------------------------------
 # 3. Nạp Mô Hình YOLOv8 (Tự động tìm đường dẫn file best.pt)
 # ---------------------------------------------------------
-import os
-
 @st.cache_resource
 def load_yolo_model():
-    # 1. Thử tìm file best.pt ở thư mục hiện tại
     if os.path.exists("best.pt"):
         return YOLO("best.pt")
     
-    # 2. Thử tìm file best.pt trong thư mục StemCell_Vision_App
     alt_path = os.path.join("StemCell_Vision_App", "best.pt")
     if os.path.exists(alt_path):
         return YOLO(alt_path)
     
-    # 3. Tự động tìm kiếm toàn bộ thư mục nếu chưa thấy
     for root, dirs, files in os.walk("."):
         if "best.pt" in files:
             return YOLO(os.path.join(root, "best.pt"))
             
-    raise FileNotFoundError("Không tìm thấy file best.pt ở bất kỳ đâu trong dự án.")
+    raise FileNotFoundError("Không tìm thấy file best.pt trong dự án.")
 
 try:
     model = load_yolo_model()
@@ -93,12 +88,10 @@ except Exception as e:
 uploaded_file = st.file_uploader("Tải ảnh hiển vi tế bào lên...", type=["jpg", "jpeg", "png", "bmp"])
 
 if uploaded_file is not None:
-    # Đọc ảnh đầu vào
     image_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     img_bgr = cv2.imdecode(image_bytes, 1)
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-    # Tiền xử lý ảnh tăng độ chính xác nếu bật tùy chọn
     if enable_contrast:
         lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
@@ -110,7 +103,6 @@ if uploaded_file is not None:
     else:
         input_for_ai = img_rgb
 
-    # Chạy mô hình YOLOv8 với tham số tối ưu IoU và Conf
     results = model.predict(
         source=input_for_ai,
         conf=conf_threshold,
@@ -118,11 +110,7 @@ if uploaded_file is not None:
         imgsz=640
     )[0]
 
-    # Trích xuất kết quả dự đoán
     boxes = results.boxes
-    detected_classes = []
-    
-    # Chuẩn bị ảnh vẽ bounding box custom
     annotated_img = input_for_ai.copy()
 
     counts = {v: 0 for v in set(CLASS_MAPPING.values())}
@@ -133,7 +121,6 @@ if uploaded_file is not None:
             conf = float(box.conf[0])
             raw_label = model.names[cls_id]
             
-            # Ánh xạ tên tiếng Việt
             label_vn = CLASS_MAPPING.get(raw_label, raw_label)
             
             if label_vn in counts:
@@ -141,21 +128,18 @@ if uploaded_file is not None:
             else:
                 counts[label_vn] = 1
 
-            # Lấy tọa độ khoanh vùng
             x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-            # Vẽ ô vuông và chữ nhãn nét cao lên ảnh
             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 255, 127), 2)
             caption_text = f"{label_vn} {conf:.2f}"
             cv2.putText(annotated_img, caption_text, (x1, max(y1 - 10, 15)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-    # Hiển thị 2 ảnh so sánh
     col1, col2 = st.columns(2)
     with col1:
-        st.image(img_rgb, caption="Ảnh Đầu Vào (Gốc)", use_column_width=True)
+        st.image(img_rgb, caption="Ảnh Đầu Vào (Gốc)", use_container_width=True)
     with col2:
-        st.image(annotated_img, caption="Ảnh AI Nhận Diện & Đếm Tất Cả Tế Bào", use_column_width=True)
+        st.image(annotated_img, caption="Ảnh AI Nhận Diện & Đếm Tất Cả Tế Bào", use_container_width=True)
 
     # ---------------------------------------------------------
     # 5. Bảng Báo Cáo Thống Kê Chi Tiết
@@ -168,7 +152,6 @@ if uploaded_file is not None:
         "Tổng Số Tế Bào": [total_cells]
     }
     
-    # Cập nhật từng loại tế bào vào bảng
     for cell_type, count in counts.items():
         report_data[cell_type] = [count]
 
