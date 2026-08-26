@@ -26,7 +26,6 @@ MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/downlo
 def load_yolo_model():
     if not os.path.exists(MODEL_PATH):
         with st.spinner("⏳ Đang tải weights mô hình YOLOv8m từ Release... Vui lòng chờ vài giây!"):
-            # Giả lập User-Agent để tránh bị GitHub từ chối kết nối
             req = urllib.request.Request(
                 MODEL_URL, 
                 headers={'User-Agent': 'Mozilla/5.0'}
@@ -60,7 +59,7 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file)
     with col1:
         st.subheader("🖼️ Ảnh tế bào gốc")
-        st.image(image, use_column_width=True)
+        st.image(image, use_container_width=True)
     
     if st.button("🚀 Phân tích tế bào"):
         with st.spinner("🔍 Đang phát hiện và phân loại các loại tế bào..."):
@@ -69,7 +68,7 @@ if uploaded_file is not None:
             
             with col2:
                 st.subheader("🎯 Kết quả phân loại")
-                st.image(res_plotted, caption="Các tế bào đã được khoanh vùng", use_column_width=True)
+                st.image(res_plotted, caption="Các tế bào đã được khoanh vùng", use_container_width=True)
                 
             st.markdown("---")
             st.subheader("📊 Thống kê số lượng tế bào phát hiện:")
