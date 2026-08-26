@@ -25,6 +25,10 @@ enable_contrast = st.sidebar.checkbox("Tăng cường tương phản (Ảnh hu�
 
 @st.cache_resource
 def load_model():
+    try:
+        return YOLO("StemCell_Vision_App/best.pt")
+    except Exception:
+        return YOLO("best.pt")
     # Sử dụng yolov8n.pt làm fallback nếu chưa có best.pt
     try:
         return YOLO("best.pt")
