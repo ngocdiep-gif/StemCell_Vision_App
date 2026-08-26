@@ -19,14 +19,21 @@ st.write("Ứng dụng AI phân biệt Stem Cells, Epithelial Cells và White Bl
 # ---------------------------------------------------------
 # 2. KHỞI TẠO VÀ TẢI MÔ HÌNH YOLOV8M TỪ GITHUB RELEASE
 # ---------------------------------------------------------
-MODEL_PATH = "best.pt"
-MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/download/v1.0/best.pt"
+MODEL_PATH = "best.1.pt"
+MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/download/v1.0/best.1.pt"
 
 @st.cache_resource
 def load_yolo_model():
     if not os.path.exists(MODEL_PATH):
         with st.spinner("⏳ Đang tải weights mô hình YOLOv8m từ Release... Vui lòng chờ vài giây!"):
-            urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+            # Giả lập User-Agent để tránh bị GitHub từ chối kết nối
+            req = urllib.request.Request(
+                MODEL_URL, 
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
+                out_file.write(response.read())
+    
     model = YOLO(MODEL_PATH)
     return model
 
