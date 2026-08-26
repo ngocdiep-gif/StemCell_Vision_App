@@ -1,166 +1,91 @@
 import streamlit as st
-import cv2
-import numpy as np
+import os
+import urllib.request
 from PIL import Image
 from ultralytics import YOLO
-import pandas as pd
-import os
 
 # ---------------------------------------------------------
-# 1. Cấu hình giao diện Trang web
+# 1. CẤU HÌNH TRANG STREAMLIT
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Hệ Thống Phân Tích & Phân Loại Tế Bào",
+    page_title="StemCell Vision App",
     page_icon="🔬",
     layout="wide"
 )
 
-st.title("🔬 Phân Tích & Phát Hiện Tế Bào Độ Chính Xác Cao")
-
-# Bảng ánh xạ tên class từ YOLO sang Tiếng Việt chuẩn y tế
-CLASS_MAPPING = {
-    'Te_Bao_Goc': 'Tế Bào Gốc',
-    'Te_Bao_Niem_Mac': 'Tế Bào Niêm Mạc',
-    'Te_Bao_Phi_Dai': 'Tế Bào Phì Đại',
-    'WBC': 'Bạch Cầu (WBC)',
-    'stem_cell': 'Tế Bào Gốc',
-    'epithelial': 'Tế Bào Niêm Mạc',
-    'hypertrophic': 'Tế Bào Phì Đại',
-    'wbc': 'Bạch Cầu (WBC)'
-}
+st.title("🔬 StemCell Vision - Phân Loại & Nhận Diện Tế Bào")
+st.write("Ứng dụng AI phân biệt Stem Cells, Epithelial Cells và White Blood Cells sử dụng YOLOv8m.")
 
 # ---------------------------------------------------------
-# 2. Thanh điều khiển (Sidebar Options)
+# 2. KHỞI TẠO VÀ TẢI MÔ HÌNH YOLOV8M TỪ GITHUB RELEASE
 # ---------------------------------------------------------
-st.sidebar.header("⚙️ Thiết lập Phân tích Advanced")
+MODEL_PATH = "best.pt"
 
-conf_threshold = st.sidebar.slider(
-    "Ngưỡng tin cậy (Confidence)",
-    min_value=0.05,
-    max_value=0.90,
-    value=0.15,
-    step=0.05,
-    help="Hạ thấp để bắt các tế bào mờ, mỏng hoặc nhỏ."
-)
+# ⚠️ Julie hãy thay link dưới đây bằng Link Direct Copy từ Releases của Julie nếu có thay đổi phiên bản:
+MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/download/v1.0/best.pt"
 
-iou_threshold = st.sidebar.slider(
-    "Ngưỡng tách tế bào dính nhau (IoU)",
-    min_value=0.10,
-    max_value=0.80,
-    value=0.40,
-    step=0.05,
-    help="Giúp nhận diện chính xác các tế bào nằm đè/chồng lên nhau."
-)
-
-enable_contrast = st.sidebar.checkbox(
-    "Tăng cường tương phản (Cân bằng Histogram CLAHE)",
-    value=True,
-    help="Giúp làm rõ viền tế bào bị nhạt màu trước khi đưa vào AI."
-)
-
-# ---------------------------------------------------------
-# 3. Nạp Mô Hình YOLOv8 (Tự động tìm đường dẫn file best.pt)
-# ---------------------------------------------------------
 @st.cache_resource
 def load_yolo_model():
-    if os.path.exists("best.pt"):
-        return YOLO("best.pt")
+    # Tự động tải file best.pt về máy chủ Streamlit nếu chưa có
+    if not os.path.exists(MODEL_PATH):
+        with st.spinner("⏳ Đang tải weights mô hình YOLOv8m từ Release... Vui lòng chờ vài giây!"):
+            urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
     
-    alt_path = os.path.join("StemCell_Vision_App", "best.pt")
-    if os.path.exists(alt_path):
-        return YOLO(alt_path)
-    
-    for root, dirs, files in os.walk("."):
-        if "best.pt" in files:
-            return YOLO(os.path.join(root, "best.pt"))
-            
-    raise FileNotFoundError("Không tìm thấy file best.pt trong dự án.")
+    # Load mô hình YOLO
+    model = YOLO(MODEL_PATH)
+    return model
 
 try:
     model = load_yolo_model()
+    st.sidebar.success("✅ Mô hình YOLOv8m đã sẵn sàng!")
 except Exception as e:
-    st.error(f"❌ Không tìm thấy file `best.pt`. Lỗi: {e}")
-    st.stop()
+    st.sidebar.error(f"❌ Lỗi tải mô hình: {e}")
 
 # ---------------------------------------------------------
-# 4. Tải Ảnh & Xử Lý Nhận Diện
+# 3. THANH ĐIỀU CHỈNH THAM SỐ (SIDEBAR)
 # ---------------------------------------------------------
-uploaded_file = st.file_uploader("Tải ảnh hiển vi tế bào lên...", type=["jpg", "jpeg", "png", "bmp"])
+st.sidebar.header("⚙️ Cấu hình nhận diện")
+conf_threshold = st.sidebar.slider("Độ tin cậy (Confidence Threshold)", 0.1, 1.0, 0.25, 0.05)
+
+# ---------------------------------------------------------
+# 4. GIAO DIỆN TẢI ANH VÀ DỰ ĐOÁN
+# ---------------------------------------------------------
+uploaded_file = st.file_uploader("Tải ảnh tế bào lên để phân tích (JPG, PNG, JPEG)...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    image_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img_bgr = cv2.imdecode(image_bytes, 1)
-    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-
-    if enable_contrast:
-        lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        cl = clahe.apply(l)
-        limg = cv2.merge((cl, a, b))
-        processed_img_bgr = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
-        input_for_ai = cv2.cvtColor(processed_img_bgr, cv2.COLOR_BGR2RGB)
-    else:
-        input_for_ai = img_rgb
-
-    results = model.predict(
-        source=input_for_ai,
-        conf=conf_threshold,
-        iou=iou_threshold,
-        imgsz=640
-    )[0]
-
-    boxes = results.boxes
-    annotated_img = input_for_ai.copy()
-
-    counts = {v: 0 for v in set(CLASS_MAPPING.values())}
-
-    if len(boxes) > 0:
-        for box in boxes:
-            cls_id = int(box.cls[0])
-            conf = float(box.conf[0])
-            raw_label = model.names[cls_id]
-            
-            label_vn = CLASS_MAPPING.get(raw_label, raw_label)
-            
-            if label_vn in counts:
-                counts[label_vn] += 1
-            else:
-                counts[label_vn] = 1
-
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-
-            # Khung chữ nhật khoanh tế bào
-            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 255, 127), 2)
-            
-            caption_text = f"{label_vn} {conf:.2f}"
-            
-            # Đã đổi chữ chú thích sang màu XANH LÁ ĐẬM (0, 100, 0)
-            cv2.putText(annotated_img, caption_text, (x1, max(y1 - 10, 15)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 100, 0), 2)
-
+    # Hiển thị 2 cột: Ảnh gốc và Kết quả
     col1, col2 = st.columns(2)
-    with col1:
-        st.image(img_rgb, caption="Ảnh Đầu Vào (Gốc)", use_container_width=True)
-    with col2:
-        st.image(annotated_img, caption="Ảnh AI Nhận Diện & Đếm Tất Cả Tế Bào", use_container_width=True)
-
-    # ---------------------------------------------------------
-    # 5. Bảng Báo Cáo Thống Kê Chi Tiết
-    # ---------------------------------------------------------
-    st.subheader("📊 Bảng Báo Cáo Thống Kê Phân Loại Tế Bào")
-
-    total_cells = len(boxes)
-    report_data = {
-        "Tên File": [uploaded_file.name],
-        "Tổng Số Tế Bào": [total_cells]
-    }
     
-    for cell_type, count in counts.items():
-        report_data[cell_type] = [count]
-
-    df_report = pd.DataFrame(report_data)
-    st.dataframe(df_report, use_container_width=True)
-
-    if total_cells == 0:
-        st.warning("⚠️ Không tìm thấy tế bào nào. Hãy thử kéo thanh 'Ngưỡng tin cậy (Confidence)' xuống mức 0.10 ở cột bên trái.")
+    image = Image.open(uploaded_file)
+    with col1:
+        st.subheader("🖼️ Ảnh tế bào gốc")
+        st.image(image, use_column_width=True)
+    
+    # Tiến hành nhận diện khi bấm nút
+    if st.button("🚀 Phân tích tế bào"):
+        with st.spinner("🔍 Đang phát hiện và phân loại các loại tế bào..."):
+            # Chạy dự đoán với mô hình YOLOv8m
+            results = model.predict(source=image, conf=conf_threshold)
+            
+            # Lấy ảnh kết quả chứa bounding box
+            res_plotted = results[0].plot()
+            
+            with col2:
+                st.subheader("🎯 Kết quả phân loại")
+                st.image(res_plotted, caption="Các tế bào đã được khoanh vùng", use_column_width=True)
+                
+            # Thống kê chi tiết từng loại tế bào tìm được
+            st.markdown("---")
+            st.subheader("📊 Thống kê số lượng tế bào phát hiện:")
+            boxes = results[0].boxes
+            if len(boxes) > 0:
+                class_names = model.names
+                counts = {}
+                for box in boxes:
+                    cls_id = int(box.cls[0])
+                    name = class_names[cls_id]
+                    counts[name] = counts.get(name, 0) + 1
+                
+                for cell_type, count in counts.items():
+                    st.write(f"- **{cell_type}**: {count} tế bào")
+            else:
