@@ -59,17 +59,32 @@ enable_contrast = st.sidebar.checkbox(
 )
 
 # ---------------------------------------------------------
-# 3. Nạp Mô Hình YOLOv8 (Tối ưu Cache)
+# 3. Nạp Mô Hình YOLOv8 (Tự động tìm đường dẫn file best.pt)
 # ---------------------------------------------------------
+import os
+
 @st.cache_resource
 def load_yolo_model():
-    # Tự động nạp file weights mới train ở thư mục hiện tại
-    return YOLO("best.pt")
+    # 1. Thử tìm file best.pt ở thư mục hiện tại
+    if os.path.exists("best.pt"):
+        return YOLO("best.pt")
+    
+    # 2. Thử tìm file best.pt trong thư mục StemCell_Vision_App
+    alt_path = os.path.join("StemCell_Vision_App", "best.pt")
+    if os.path.exists(alt_path):
+        return YOLO(alt_path)
+    
+    # 3. Tự động tìm kiếm toàn bộ thư mục nếu chưa thấy
+    for root, dirs, files in os.walk("."):
+        if "best.pt" in files:
+            return YOLO(os.path.join(root, "best.pt"))
+            
+    raise FileNotFoundError("Không tìm thấy file best.pt ở bất kỳ đâu trong dự án.")
 
 try:
     model = load_yolo_model()
 except Exception as e:
-    st.error(f"❌ Không tìm thấy file `best.pt`. Hãy chắc chắn file nằm cùng thư mục với `app.py`. Lỗi: {e}")
+    st.error(f"❌ Không tìm thấy file `best.pt`. Lỗi: {e}")
     st.stop()
 
 # ---------------------------------------------------------
