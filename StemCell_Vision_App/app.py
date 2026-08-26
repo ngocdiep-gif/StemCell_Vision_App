@@ -130,10 +130,14 @@ if uploaded_file is not None:
 
             x1, y1, x2, y2 = map(int, box.xyxy[0])
 
+            # Khung chữ nhật khoanh tế bào
             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 255, 127), 2)
+            
             caption_text = f"{label_vn} {conf:.2f}"
+            
+            # Đã đổi chữ chú thích sang màu XANH LÁ ĐẬM (0, 100, 0)
             cv2.putText(annotated_img, caption_text, (x1, max(y1 - 10, 15)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 100, 0), 2)
 
     col1, col2 = st.columns(2)
     with col1:
