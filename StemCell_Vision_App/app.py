@@ -2,7 +2,7 @@ import os
 import urllib.request
 import streamlit as st
 import torch
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 # ---------------------------------------------------------
 # CẤU HÌNH GIAO DIỆN STREAMLIT
@@ -19,47 +19,8 @@ st.caption("Hệ thống AI phân loại & định lượng tế bào dựa trê
 MODEL_PATH = "best.1.pt"
 MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/download/v1.0/best.1.pt"
 
-CELL_MORPHOLOGY_DB = {
-    "Normal": {
-        "vn": "Tế bào biểu mô bình thường",
-        "desc": "Dạng đa giác/lục giác, xếp lát gạch. Nhân nhỏ tròn ở trung tâm, tỷ lệ N/C thấp.",
-        "ref": "Holland et al., Cornea & Limbus Morphometry (2021)",
-        "color": (46, 204, 113)
-    },
-    "Ascus": {
-        "vn": "Tế bào biến đổi bất thường (ASCUS)",
-        "desc": "Nhân phì đại bất thường, dị dạng viền nhân, tăng sắc tố. Tỷ lệ N/C tăng cao bất thường.",
-        "ref": "Bethesda System for Cytopathology Standards",
-        "color": (231, 76, 60)
-    },
-    "Stem Cell": {
-        "vn": "Tế bào gốc vùng rìa (Limbal Stem Cells)",
-        "desc": "Kích thước nhỏ (7-10µm), hình tròn/lục giác đều, nhân chiếm ưu thế (Tỷ lệ N/C >= 0.8).",
-        "ref": "Pellegrini et al., Nature Eye & Stem Cell Biology (2018)",
-        "color": (52, 152, 219)
-    },
-    "Epithelial": {
-        "vn": "Tế bào biểu mô giác mạc",
-        "desc": "Kích thước lớn (20-40µm), màng ranh giới rõ ràng, tế bào chất rộng.",
-        "ref": "Ophthalmic Research & In Vivo Confocal Microscopy Standards",
-        "color": (230, 126, 34)
-    },
-    "WBC": {
-        "vn": "Bạch cầu / Tế bào viêm (WBC)",
-        "desc": "Phản quang mạnh trên IVCM, nhân chia thùy hoặc nhân đa thùy đặc trưng.",
-        "ref": "Journal of Clinical & Experimental Ophthalmology",
-        "color": (155, 89, 182)
-    },
-    "BG": {
-        "vn": "Nền vi trường / Phế nang",
-        "desc": "Vùng nền không chứa cấu trúc tế bào tiêu chuẩn.",
-        "ref": "Standard Microscopic Background Category",
-        "color": (149, 165, 166)
-    }
-}
-
 # ---------------------------------------------------------
-# NẠP MÔ HÌNH THUẦN PYTORCH (BYPASS HOÀN TOÀN OPENCV/LIBGL)
+# NẠP MÔ HÌNH (CHUẨN HÓA THỤT LÙI DÒNG)
 # ---------------------------------------------------------
 @st.cache_resource
 def load_pure_torch_model():
@@ -72,12 +33,8 @@ def load_pure_torch_model():
         with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
             out_file.write(response.read())
     
-    # Nạp weights qua TorchScript / PyTorch CPU
- model_ckpt = torch.load(MODEL_PATH, map_location='cpu', weights_only=False)
-    if hasattr(model_ckpt, 'float'):
-        model_ckpt = model_ckpt.float()
-    if hasattr(model_ckpt, 'eval'):
-        model_ckpt.eval()
+    # Đọc checkpoint PyTorch bằng weights_only=False
+    model_ckpt = torch.load(MODEL_PATH, map_location='cpu', weights_only=False)
     return model_ckpt
 
 model = None
@@ -104,4 +61,4 @@ if uploaded_file is not None:
         st.image(image, use_container_width=True)
     
     if st.button("🚀 Phân tích & Định lượng Tế bào"):
-        st.info("✅ Mô hình đã sẵn sàng xử lý trên hệ thống PyTorch CPU!")
+        st.info("✅ Đang chuẩn bị phân tích dữ liệu...")
