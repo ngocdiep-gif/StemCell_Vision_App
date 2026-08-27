@@ -1,4 +1,13 @@
 import os
+import sys
+
+# Ép hệ thống dùng opencv headless trước khi bất kỳ thư viện nào gọi đến OpenCV
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"
+try:
+    import cv2
+except ImportError:
+    pass
+
 import urllib.request
 import streamlit as st
 import torch
@@ -76,10 +85,9 @@ def load_yolo_model():
             out_file.write(response.read())
     
     from ultralytics import YOLO
-    # Tắt tính năng không cần thiết để tiết kiệm RAM tối đa
     torch.set_grad_enabled(False)
     yolo_model = YOLO(MODEL_PATH)
-    yolo_model.to('cpu')  # Bắt buộc chạy trên CPU để ổn định Streamlit Cloud
+    yolo_model.to('cpu')
     return yolo_model
 
 model = None
@@ -97,7 +105,7 @@ st.sidebar.header("⚙️ Cấu hình nhận diện")
 conf_threshold = st.sidebar.slider("Ngưỡng độ tin cậy (Confidence)", 0.05, 1.0, 0.20, 0.05)
 
 # ---------------------------------------------------------
-# 5. HÀM VẼ KHUNG THUẦN PIL (KHÔNG DÙNG OPENCV)
+# 5. HÀM VẼ KHUNG THUẦN PIL
 # ---------------------------------------------------------
 def draw_boxes_pil(img_pil, boxes, orig_names):
     img_draw = img_pil.copy()
@@ -120,9 +128,7 @@ def draw_boxes_pil(img_pil, boxes, orig_names):
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         color = info["color"]
         
-        # Vẽ khung bao
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-        # Vẽ thẻ tên
         label_text = f"{vn_name} ({conf:.2f})"
         draw.rectangle([x1, max(0, y1 - 18), x1 + 220, max(18, y1)], fill=color)
         draw.text((x1 + 4, max(0, y1 - 15)), label_text, fill=(255, 255, 255), font=font)
