@@ -3,7 +3,6 @@ import os
 import urllib.request
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
-from ultralytics import YOLO
 
 # ---------------------------------------------------------
 # 1. CẤU HÌNH TRANG STREAMLIT
@@ -15,7 +14,7 @@ st.set_page_config(
 )
 
 st.title("🔬 StemCell Vision - Phân Loại & Nhận Diện Tế Bào")
-st.write("Ứng dụng AI phân biệt các loại tế bào bằng mô hình YOLOv8m.")
+st.write("Ứng dụng AI phát hiện và phân loại tế bào độ chính xác cao.")
 
 # ---------------------------------------------------------
 # 2. KHỞI TẠO VÀ TẢI MÔ HÌNH YOLOV8M TỪ GITHUB RELEASE
@@ -23,7 +22,6 @@ st.write("Ứng dụng AI phân biệt các loại tế bào bằng mô hình YO
 MODEL_PATH = "best.1.pt"
 MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/download/v1.0/best.1.pt"
 
-# Từ điển Việt hóa tên nhãn tế bào
 CLASS_NAME_VIETNAMESE = {
     "Normal": "Tế bào bình thường",
     "Ascus": "Tế bào bất thường (ASCUS)",
@@ -33,14 +31,13 @@ CLASS_NAME_VIETNAMESE = {
     "WBC": "Tế bào bạch cầu"
 }
 
-# Màu sắc RGB cho từng nhãn
 CLASS_COLORS = {
-    "Normal": (255, 255, 255),      # Trắng
-    "Ascus": (255, 0, 0),           # Đỏ
-    "BG": (255, 255, 0),            # Vàng
-    "Stem Cell": (0, 102, 255),     # Xanh dương
-    "Epithelial": (0, 204, 0),      # Xanh lá
-    "WBC": (204, 0, 204)            # Tím
+    "Normal": (255, 255, 255),
+    "Ascus": (255, 0, 0),
+    "BG": (255, 255, 0),
+    "Stem Cell": (0, 102, 255),
+    "Epithelial": (0, 204, 0),
+    "WBC": (204, 0, 204)
 }
 
 @st.cache_resource
@@ -54,8 +51,8 @@ def load_yolo_model():
             with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
                 out_file.write(response.read())
     
-    model = YOLO(MODEL_PATH)
-    return model
+    from ultralytics import YOLO
+    return YOLO(MODEL_PATH)
 
 try:
     model = load_yolo_model()
@@ -64,23 +61,18 @@ except Exception as e:
     st.sidebar.error(f"❌ Lỗi tải mô hình: {e}")
 
 # ---------------------------------------------------------
-# 3. THANH ĐIỀU CHỈNH THAM SỐ (SIDEBAR)
+# 3. THANH ĐIỀU CHỈNH THAM SỐ
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Cấu hình nhận diện")
 conf_threshold = st.sidebar.slider("Độ tin cậy (Confidence Threshold)", 0.1, 1.0, 0.25, 0.05)
 
 # ---------------------------------------------------------
-# 4. HÀM VẼ KHUNG CHÚ THÍCH TIẾNG VIỆT (DÙNG PIL THUẦN)
+# 4. HÀM VẼ KHUNG THUẦN PIL
 # ---------------------------------------------------------
 def draw_vietnamese_boxes(img_pil, boxes, orig_names):
     img_draw = img_pil.copy()
     draw = ImageDraw.Draw(img_draw)
-    
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 14)
-    except:
-        font = ImageFont.load_default()
-        
+    font = ImageFont.load_default()
     counts = {}
     
     for box in boxes:
@@ -94,29 +86,22 @@ def draw_vietnamese_boxes(img_pil, boxes, orig_names):
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         color = CLASS_COLORS.get(original_name, (0, 255, 0))
         
-        # Vẽ viền khung
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-        
-        # Vẽ nhãn chữ Tiếng Việt
         label_text = f"{vn_name} {conf:.2f}"
-        text_bbox = draw.textbbox((x1, y1), label_text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        
-        draw.rectangle([x1, y1 - text_height - 6, x1 + text_width + 8, y1], fill=color)
-        draw.text((x1 + 4, y1 - text_height - 4), label_text, fill=(0, 0, 0), font=font)
+        draw.rectangle([x1, y1 - 15, x1 + 140, y1], fill=color)
+        draw.text((x1 + 2, y1 - 13), label_text, fill=(0, 0, 0), font=font)
         
     return img_draw, counts
 
 # ---------------------------------------------------------
-# 5. GIAO DIỆN TẢI ANH VÀ DỰ ĐOÁN
+# 5. GIAO DIỆN PHÂN TÍCH
 # ---------------------------------------------------------
 uploaded_file = st.file_uploader("Tải ảnh tế bào lên để phân tích (JPG, PNG, JPEG)...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     col1, col2 = st.columns(2)
-    
     image = Image.open(uploaded_file).convert("RGB")
+    
     with col1:
         st.subheader("🖼️ Ảnh tế bào gốc")
         st.image(image, use_container_width=True)
