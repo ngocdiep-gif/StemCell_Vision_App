@@ -1,6 +1,7 @@
 import os
 import urllib.request
 import streamlit as st
+import torch
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------------------------------------------------
@@ -61,28 +62,33 @@ CELL_MORPHOLOGY_DB = {
 }
 
 # ---------------------------------------------------------
-# 3. NẠP MÔ HÌNH AN TOÀN (CACHE RESOURCE)
+# 3. NẠP MÔ HÌNH TỐI ƯU BỘ NHỚ RAM
 # ---------------------------------------------------------
 @st.cache_resource
 def load_yolo_model():
     if not os.path.exists(MODEL_PATH):
-        with st.spinner("⏳ Đang nạp bộ trọng số mô hình AI... Vui lòng chờ vài giây!"):
-            req = urllib.request.Request(
-                MODEL_URL, 
-                headers={'User-Agent': 'Mozilla/5.0'}
-            )
-            with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
-                out_file.write(response.read())
+        st.info("🔄 Đang tải tệp trọng số mô hình từ GitHub Release...")
+        req = urllib.request.Request(
+            MODEL_URL, 
+            headers={'User-Agent': 'Mozilla/5.0'}
+        )
+        with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
+            out_file.write(response.read())
     
     from ultralytics import YOLO
-    return YOLO(MODEL_PATH)
+    # Tắt tính năng không cần thiết để tiết kiệm RAM tối đa
+    torch.set_grad_enabled(False)
+    yolo_model = YOLO(MODEL_PATH)
+    yolo_model.to('cpu')  # Bắt buộc chạy trên CPU để ổn định Streamlit Cloud
+    return yolo_model
 
 model = None
 try:
     model = load_yolo_model()
     st.sidebar.success("✅ Mô hình AI đã sẵn sàng!")
 except Exception as e:
-    st.sidebar.error(f"❌ Lỗi nạp mô hình: {e}")
+    st.sidebar.error(f"❌ Lỗi chi tiết: {e}")
+    st.error(f"⚠️ Chưa nạp được mô hình. Chi tiết lỗi kỹ thuật: `{e}`")
 
 # ---------------------------------------------------------
 # 4. THANH BÊN TÙY CHỈNH THAM SỐ
@@ -91,7 +97,7 @@ st.sidebar.header("⚙️ Cấu hình nhận diện")
 conf_threshold = st.sidebar.slider("Ngưỡng độ tin cậy (Confidence)", 0.05, 1.0, 0.20, 0.05)
 
 # ---------------------------------------------------------
-# 5. HÀM VẼ KHUNG THUẦN PIL (TRÁNH LỖI OPENCV/LIBGL)
+# 5. HÀM VẼ KHUNG THUẦN PIL (KHÔNG DÙNG OPENCV)
 # ---------------------------------------------------------
 def draw_boxes_pil(img_pil, boxes, orig_names):
     img_draw = img_pil.copy()
@@ -114,9 +120,9 @@ def draw_boxes_pil(img_pil, boxes, orig_names):
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         color = info["color"]
         
-        # Vẽ khung
+        # Vẽ khung bao
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-        # Vẽ nhãn
+        # Vẽ thẻ tên
         label_text = f"{vn_name} ({conf:.2f})"
         draw.rectangle([x1, max(0, y1 - 18), x1 + 220, max(18, y1)], fill=color)
         draw.text((x1 + 4, max(0, y1 - 15)), label_text, fill=(255, 255, 255), font=font)
@@ -126,7 +132,7 @@ def draw_boxes_pil(img_pil, boxes, orig_names):
 # ---------------------------------------------------------
 # 6. XỬ LÝ ẢNH ĐẦU VÀO VÀ HIỂN THỊ KẾT QUẢ
 # ---------------------------------------------------------
-uploaded_file = st.file_uploader("Tải ảnh soi kính hiển vi / thị giác máy tính...", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Tải ảnh soi kính hiển vi...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     col1, col2 = st.columns(2)
@@ -138,10 +144,11 @@ if uploaded_file is not None:
     
     if st.button("🚀 Phân tích & Định lượng Tế bào"):
         if model is None:
-            st.error("Chưa nạp được mô hình. Vui lòng kiểm tra lại log.")
+            st.error("Chưa nạp được mô hình. Hãy nhìn thông báo lỗi đỏ ở góc trái màn hình!")
         else:
             with st.spinner("🔍 AI đang tự động khoanh vùng và phân loại tế bào..."):
-                results = model.predict(source=image, conf=conf_threshold, verbose=False)
+                with torch.no_grad():
+                    results = model.predict(source=image, conf=conf_threshold, verbose=False)
                 boxes = results[0].boxes
                 
                 if len(boxes) > 0:
@@ -154,7 +161,6 @@ if uploaded_file is not None:
                     st.markdown("---")
                     st.subheader("📊 Thống kê & Báo cáo Hình thái Y sinh:")
                     
-                    # Hiển thị kết quả định lượng kèm mô tả chuẩn học thuật
                     for orig_name, info in CELL_MORPHOLOGY_DB.items():
                         vn_name = info["vn"]
                         if vn_name in counts:
