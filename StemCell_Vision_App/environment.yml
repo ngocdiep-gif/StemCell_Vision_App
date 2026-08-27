@@ -1,0 +1,13 @@
+name: streamlit_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - streamlit
+      - ultralytics
+      - Pillow
+      - numpy
+      - opencv-python-headless
