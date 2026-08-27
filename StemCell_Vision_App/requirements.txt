@@ -1,6 +1,6 @@
 streamlit
 Pillow
-opencv-python-headless
+opencv-python-headless==4.8.1.78
 ultralytics
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
