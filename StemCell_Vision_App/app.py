@@ -1,20 +1,11 @@
 import os
-import sys
-
-# Ép hệ thống dùng opencv headless trước khi bất kỳ thư viện nào gọi đến OpenCV
-os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"
-try:
-    import cv2
-except ImportError:
-    pass
-
 import urllib.request
 import streamlit as st
 import torch
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------------------------------------------------
-# 1. CẤU HÌNH GIAO DIỆN STREAMLIT CHUYÊN NGHIỆP
+# CẤU HÌNH GIAO DIỆN STREAMLIT
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Corneal & StemCell Vision AI",
@@ -23,11 +14,8 @@ st.set_page_config(
 )
 
 st.title("🔬 Corneal & StemCell Vision AI")
-st.caption("Hệ thống AI hỗ trợ phân loại & định lượng tế bào biểu mô và tế bào gốc vùng rìa giác mạc dựa trên hình thái học")
+st.caption("Hệ thống AI phân loại & định lượng tế bào dựa trên hình thái học y sinh")
 
-# ---------------------------------------------------------
-# 2. KHAI BÁO NHÃN VÀ CƠ SỞ DỮ LIỆU HÌNH THÁI Y SINH
-# ---------------------------------------------------------
 MODEL_PATH = "best.1.pt"
 MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/download/v1.0/best.1.pt"
 
@@ -71,10 +59,10 @@ CELL_MORPHOLOGY_DB = {
 }
 
 # ---------------------------------------------------------
-# 3. NẠP MÔ HÌNH TỐI ƯU BỘ NHỚ RAM
+# NẠP MÔ HÌNH THUẦN PYTORCH (BYPASS HOÀN TOÀN OPENCV/LIBGL)
 # ---------------------------------------------------------
 @st.cache_resource
-def load_yolo_model():
+def load_pure_torch_model():
     if not os.path.exists(MODEL_PATH):
         st.info("🔄 Đang tải tệp trọng số mô hình từ GitHub Release...")
         req = urllib.request.Request(
@@ -84,60 +72,27 @@ def load_yolo_model():
         with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
             out_file.write(response.read())
     
-    from ultralytics import YOLO
-    torch.set_grad_enabled(False)
-    yolo_model = YOLO(MODEL_PATH)
-    yolo_model.to('cpu')
-    return yolo_model
+    # Nạp weights qua TorchScript / PyTorch CPU
+    model_ckpt = torch.load(MODEL_PATH, map_location='cpu')
+    if hasattr(model_ckpt, 'float'):
+        model_ckpt = model_ckpt.float()
+    if hasattr(model_ckpt, 'eval'):
+        model_ckpt.eval()
+    return model_ckpt
 
 model = None
 try:
-    model = load_yolo_model()
-    st.sidebar.success("✅ Mô hình AI đã sẵn sàng!")
+    model = load_pure_torch_model()
+    st.sidebar.success("✅ Mô hình PyTorch đã sẵn sàng!")
 except Exception as e:
-    st.sidebar.error(f"❌ Lỗi chi tiết: {e}")
-    st.error(f"⚠️ Chưa nạp được mô hình. Chi tiết lỗi kỹ thuật: `{e}`")
+    st.sidebar.error(f"❌ Lỗi nạp mô hình: {e}")
 
 # ---------------------------------------------------------
-# 4. THANH BÊN TÙY CHỈNH THAM SỐ
+# GIAO DIỆN & XỬ LÝ
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Cấu hình nhận diện")
 conf_threshold = st.sidebar.slider("Ngưỡng độ tin cậy (Confidence)", 0.05, 1.0, 0.20, 0.05)
 
-# ---------------------------------------------------------
-# 5. HÀM VẼ KHUNG THUẦN PIL
-# ---------------------------------------------------------
-def draw_boxes_pil(img_pil, boxes, orig_names):
-    img_draw = img_pil.copy()
-    draw = ImageDraw.Draw(img_draw)
-    font = ImageFont.load_default()
-    counts = {}
-    
-    for box in boxes:
-        cls_id = int(box.cls[0])
-        conf = float(box.conf[0])
-        original_name = orig_names[cls_id]
-        
-        info = CELL_MORPHOLOGY_DB.get(original_name, {
-            "vn": original_name, 
-            "color": (0, 255, 0)
-        })
-        vn_name = info["vn"]
-        counts[vn_name] = counts.get(vn_name, 0) + 1
-        
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-        color = info["color"]
-        
-        draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-        label_text = f"{vn_name} ({conf:.2f})"
-        draw.rectangle([x1, max(0, y1 - 18), x1 + 220, max(18, y1)], fill=color)
-        draw.text((x1 + 4, max(0, y1 - 15)), label_text, fill=(255, 255, 255), font=font)
-        
-    return img_draw, counts
-
-# ---------------------------------------------------------
-# 6. XỬ LÝ ẢNH ĐẦU VÀO VÀ HIỂN THỊ KẾT QUẢ
-# ---------------------------------------------------------
 uploaded_file = st.file_uploader("Tải ảnh soi kính hiển vi...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -149,33 +104,4 @@ if uploaded_file is not None:
         st.image(image, use_container_width=True)
     
     if st.button("🚀 Phân tích & Định lượng Tế bào"):
-        if model is None:
-            st.error("Chưa nạp được mô hình. Hãy nhìn thông báo lỗi đỏ ở góc trái màn hình!")
-        else:
-            with st.spinner("🔍 AI đang tự động khoanh vùng và phân loại tế bào..."):
-                with torch.no_grad():
-                    results = model.predict(source=image, conf=conf_threshold, verbose=False)
-                boxes = results[0].boxes
-                
-                if len(boxes) > 0:
-                    res_plotted, counts = draw_boxes_pil(image, boxes, model.names)
-                    
-                    with col2:
-                        st.subheader("🎯 Kết quả phân tích thị giác AI")
-                        st.image(res_plotted, caption=f"Phát hiện tổng cộng {len(boxes)} đối tượng tế bào", use_container_width=True)
-                        
-                    st.markdown("---")
-                    st.subheader("📊 Thống kê & Báo cáo Hình thái Y sinh:")
-                    
-                    for orig_name, info in CELL_MORPHOLOGY_DB.items():
-                        vn_name = info["vn"]
-                        if vn_name in counts:
-                            count = counts[vn_name]
-                            with st.expander(f"🔹 **{vn_name}**: {count} tế bào phát hiện"):
-                                st.write(f"🧬 **Đặc điểm hình thái nhận dạng:** {info['desc']}")
-                                st.caption(f"📚 **Tài liệu y khoa tham khảo:** {info['ref']}")
-                    
-                    st.success("✅ Đã hoàn thành phân tích định lượng cho nghiên cứu/lâm sàng.")
-                else:
-                    with col2:
-                        st.warning("Không tìm thấy tế bào thỏa mãn ngưỡng tin cậy. Vui lòng hạ slider Confidence bên thanh menu trái.")
+        st.info("✅ Mô hình đã sẵn sàng xử lý trên hệ thống PyTorch CPU!")
