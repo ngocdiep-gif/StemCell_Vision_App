@@ -1,6 +1,3 @@
-ython
-
-
 import streamlit as st
 import os
 import urllib.request
@@ -100,7 +97,7 @@ def draw_vietnamese_boxes(img_pil, boxes, orig_names):
         # Vẽ viền khung
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
         
-        # Vẽ thẻ tên Tiếng Việt
+        # Vẽ nhãn chữ Tiếng Việt
         label_text = f"{vn_name} {conf:.2f}"
         text_bbox = draw.textbbox((x1, y1), label_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
@@ -145,4 +142,4 @@ if uploaded_file is not None:
                         st.write(f"- **{cell_type}**: {count} tế bào")
             else:
                 with col2:
-                    st.warning("Chưa phát hiện thấy tế bào nào với ngưỡng độ tin cậy
+                    st.warning("Chưa phát hiện thấy tế bào nào với ngưỡng độ tin cậy hiện tại. Hãy thử giảm thanh Slider bên trái!")
