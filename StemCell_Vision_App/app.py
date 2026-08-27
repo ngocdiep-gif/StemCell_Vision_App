@@ -2,7 +2,6 @@ import streamlit as st
 import os
 import urllib.request
 from PIL import Image, ImageDraw, ImageFont
-import numpy as np
 
 # ---------------------------------------------------------
 # 1. CẤU HÌNH TRANG STREAMLIT
@@ -54,6 +53,8 @@ def load_yolo_model():
     from ultralytics import YOLO
     return YOLO(MODEL_PATH)
 
+# Nạp mô hình
+model = None
 try:
     model = load_yolo_model()
     st.sidebar.success("✅ Mô hình YOLOv8m đã sẵn sàng!")
@@ -107,24 +108,27 @@ if uploaded_file is not None:
         st.image(image, use_container_width=True)
     
     if st.button("🚀 Phân tích tế bào"):
-        with st.spinner("🔍 Đang phát hiện và phân loại các loại tế bào..."):
-            results = model.predict(source=image, conf=conf_threshold)
-            boxes = results[0].boxes
-            
-            if len(boxes) > 0:
-                res_plotted, counts = draw_vietnamese_boxes(image, boxes, model.names)
+        if model is None:
+            st.error("Mô hình chưa được nạp thành công. Vui lòng kiểm tra lại log hệ thống.")
+        else:
+            with st.spinner("🔍 Đang phát hiện và phân loại các loại tế bào..."):
+                results = model.predict(source=image, conf=conf_threshold)
+                boxes = results[0].boxes
                 
-                with col2:
-                    st.subheader("🎯 Kết quả phân loại (Tiếng Việt)")
-                    st.image(res_plotted, caption="Các tế bào đã được phát hiện", use_container_width=True)
+                if len(boxes) > 0:
+                    res_plotted, counts = draw_vietnamese_boxes(image, boxes, model.names)
                     
-                st.markdown("---")
-                st.subheader("📊 Bảng thống kê số lượng phát hiện:")
-                for cell_type, count in counts.items():
-                    if "ASCUS" in cell_type or "bất thường" in cell_type:
-                        st.error(f"- **{cell_type}**: {count} tế bào (⚠️ Cần chú ý)")
-                    else:
-                        st.write(f"- **{cell_type}**: {count} tế bào")
-            else:
-                with col2:
-                    st.warning("Chưa phát hiện thấy tế bào nào với ngưỡng độ tin cậy hiện tại. Hãy thử giảm thanh Slider bên trái!")
+                    with col2:
+                        st.subheader("🎯 Kết quả phân loại (Tiếng Việt)")
+                        st.image(res_plotted, caption="Các tế bào đã được phát hiện", use_container_width=True)
+                        
+                    st.markdown("---")
+                    st.subheader("📊 Bảng thống kê số lượng phát hiện:")
+                    for cell_type, count in counts.items():
+                        if "ASCUS" in cell_type or "bất thường" in cell_type:
+                            st.error(f"- **{cell_type}**: {count} tế bào (⚠️ Cần chú ý)")
+                        else:
+                            st.write(f"- **{cell_type}**: {count} tế bào")
+                else:
+                    with col2:
+                        st.warning("Chưa phát hiện thấy tế bào nào với ngưỡng độ tin cậy hiện tại. Hãy thử giảm thanh Slider bên trái!")
