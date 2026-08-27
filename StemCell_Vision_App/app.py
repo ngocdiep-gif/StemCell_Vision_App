@@ -42,7 +42,7 @@ CLASS_COLORS = {
 @st.cache_resource
 def load_yolo_model():
     if not os.path.exists(MODEL_PATH):
-        with st.spinner("⏳ Đang tải weights mô hình YOLOv8m từ Release... Vui lòng chờ vài giây!"):
+        with st.spinner("⏳ Đang tải weights mô hình YOLOv8m từ Release..."):
             req = urllib.request.Request(
                 MODEL_URL, 
                 headers={'User-Agent': 'Mozilla/5.0'}
@@ -50,16 +50,12 @@ def load_yolo_model():
             with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
                 out_file.write(response.read())
     
+    # Ép OpenCV và Ultralytics chạy ở chế độ Headless không dùng GUI
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    os.environ["OPENCV_HEADLESS"] = "1"
+    
     from ultralytics import YOLO
     return YOLO(MODEL_PATH)
-
-# Nạp mô hình
-model = None
-try:
-    model = load_yolo_model()
-    st.sidebar.success("✅ Mô hình YOLOv8m đã sẵn sàng!")
-except Exception as e:
-    st.sidebar.error(f"❌ Lỗi tải mô hình: {e}")
 
 # ---------------------------------------------------------
 # 3. THANH ĐIỀU CHỈNH THAM SỐ
