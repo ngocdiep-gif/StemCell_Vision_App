@@ -73,7 +73,7 @@ def load_pure_torch_model():
             out_file.write(response.read())
     
     # Nạp weights qua TorchScript / PyTorch CPU
-    model_ckpt = torch.load(MODEL_PATH, map_location='cpu')
+ model_ckpt = torch.load(MODEL_PATH, map_location='cpu', weights_only=False)
     if hasattr(model_ckpt, 'float'):
         model_ckpt = model_ckpt.float()
     if hasattr(model_ckpt, 'eval'):
