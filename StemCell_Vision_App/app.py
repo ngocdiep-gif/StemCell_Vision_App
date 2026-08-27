@@ -1,24 +1,12 @@
-import sys
 import os
 import urllib.request
-import numpy as np
+import torch
+import torchvision.transforms as T
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------------------------------------------------
-# 1. BYPASS LỖI LIBGL & OPENCV TRÊN STREAMLIT CLOUD
-# ---------------------------------------------------------
-try:
-    import cv2
-except ImportError:
-    import unittest.mock as mock
-    sys.modules["cv2"] = mock.MagicMock()
-
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
-os.environ["OPENCV_HEADLESS"] = "1"
-
-# ---------------------------------------------------------
-# 2. CẤU HÌNH GIAO DIỆN STREAMLIT
+# 1. CẤU HÌNH GIAO DIỆN STREAMLIT
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="StemCell Vision App",
@@ -30,7 +18,7 @@ st.title("🔬 StemCell Vision - Phân Loại & Nhận Diện Tế Bào")
 st.write("Ứng dụng AI phát hiện và phân loại tế bào độ chính xác cao.")
 
 # ---------------------------------------------------------
-# 3. MÔ HÌNH YOLO & ÁNH XẠ NHÃN TIẾNG VIỆT
+# 2. MÔ HÌNH YOLO & ÁNH XẠ NHÃN TIẾNG VIỆT
 # ---------------------------------------------------------
 MODEL_PATH = "best.1.pt"
 MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/download/v1.0/best.1.pt"
@@ -75,13 +63,13 @@ except Exception as e:
     st.sidebar.error(f"❌ Lỗi tải mô hình: {e}")
 
 # ---------------------------------------------------------
-# 4. THANH ĐIỀU CHỈNH THAM SỐ
+# 3. THANH ĐIỀU CHỈNH THAM SỐ
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Cấu hình nhận diện")
 conf_threshold = st.sidebar.slider("Độ tin cậy (Confidence Threshold)", 0.1, 1.0, 0.25, 0.05)
 
 # ---------------------------------------------------------
-# 5. HÀM VẼ KHUNG THUẦN PIL
+# 4. HÀM VẼ KHUNG THUẦN PIL
 # ---------------------------------------------------------
 def draw_boxes_pil(img_pil, boxes, orig_names):
     img_draw = img_pil.copy()
@@ -110,7 +98,7 @@ def draw_boxes_pil(img_pil, boxes, orig_names):
     return img_draw, counts
 
 # ---------------------------------------------------------
-# 6. GIAO DIỆN TẢI ẢNH VÀ XỬ LÝ PHÂN TÍCH
+# 5. GIAO DIỆN TẢI ẢNH VÀ XỬ LÝ PHÂN TÍCH
 # ---------------------------------------------------------
 uploaded_file = st.file_uploader("Tải ảnh tế bào lên để phân tích (JPG, PNG, JPEG)...", type=["jpg", "jpeg", "png"])
 
@@ -127,10 +115,11 @@ if uploaded_file is not None:
             st.error("Mô hình chưa được nạp. Vui lòng kiểm tra lại log hệ thống.")
         else:
             with st.spinner("🔍 Đang phân loại các loại tế bào..."):
-                # SỬA LỖI VALUEERROR: Chuyển PIL Image sang Numpy Array trước khi đưa vào YOLO
-                img_np = np.array(image)
+                # Chuyển ảnh PIL sang PyTorch Tensor để bỏ qua OpenCV tiền xử lý
+                transform = T.ToTensor()
+                tensor_img = transform(image).unsqueeze(0)
                 
-                results = model.predict(source=img_np, conf=conf_threshold)
+                results = model.predict(source=tensor_img, conf=conf_threshold)
                 boxes = results[0].boxes
                 
                 if len(boxes) > 0:
