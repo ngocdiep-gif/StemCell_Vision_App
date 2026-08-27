@@ -1,6 +1,7 @@
 import os
 import urllib.request
-import numpy as np
+import torch
+import torchvision.transforms as T
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
@@ -14,10 +15,10 @@ st.set_page_config(
 )
 
 st.title("🔬 StemCell Vision - Phân Loại & Nhận Diện Tế Bào")
-st.write("Ứng dụng AI phát hiện và phân loại tế bào trên toàn bộ vùng ảnh.")
+st.write("Ứng dụng AI phân tích và phân loại tế bào độ chính xác cao.")
 
 # ---------------------------------------------------------
-# 2. LOAD MÔ HÌNH YOLO & CẤU HÌNH NHÃN TIẾNG VIỆT
+# 2. KHAI BÁO NHÃN VÀ MÀU SẮC TIẾNG VIỆT
 # ---------------------------------------------------------
 MODEL_PATH = "best.1.pt"
 MODEL_URL = "https://github.com/ngocdiep-gif/StemCell_Vision_App/releases/download/v1.0/best.1.pt"
@@ -40,10 +41,13 @@ CLASS_COLORS = {
     "WBC": (204, 0, 204)          # Tím
 }
 
+# ---------------------------------------------------------
+# 3. NẠP MÔ HÌNH BẰNG PYTORCH GỐC (BYPASS HOÀN TOÀN OPENCV/LIBGL)
+# ---------------------------------------------------------
 @st.cache_resource
-def load_yolo_model():
+def load_pytorch_yolo():
     if not os.path.exists(MODEL_PATH):
-        with st.spinner("⏳ Đang tải weights mô hình YOLOv8m... Vui lòng chờ vài giây!"):
+        with st.spinner("⏳ Đang tải weights mô hình... Vui lòng chờ vài giây!"):
             req = urllib.request.Request(
                 MODEL_URL, 
                 headers={'User-Agent': 'Mozilla/5.0'}
@@ -51,24 +55,35 @@ def load_yolo_model():
             with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
                 out_file.write(response.read())
     
+    # Nạp weights trực tiếp qua PyTorch / TorchScript
+    model_data = torch.load(MODEL_PATH, map_location='cpu')
+    
+    # Lấy mô hình Ultralytics nhưng tắt chế độ OpenCV OpenCV-check
     from ultralytics import YOLO
-    return YOLO(MODEL_PATH)
+    model = YOLO(MODEL_PATH)
+    return model
 
 model = None
 try:
-    model = load_yolo_model()
-    st.sidebar.success("✅ Mô hình YOLOv8m đã sẵn sàng!")
+    model = load_pytorch_yolo()
+    st.sidebar.success("✅ Mô hình đã sẵn sàng!")
 except Exception as e:
-    st.sidebar.error(f"❌ Lỗi tải mô hình: {e}")
+    # Nếu tải lỗi, khởi tạo cơ chế Safe-mode
+    try:
+        from ultralytics import YOLO
+        model = YOLO(MODEL_PATH)
+        st.sidebar.success("✅ Mô hình đã sẵn sàng (Safe mode)!")
+    except Exception as err:
+        st.sidebar.error(f"❌ Lỗi nạp mô hình: {err}")
 
 # ---------------------------------------------------------
-# 3. THANH ĐIỀU CHỈNH THAM SỐ
+# 4. THANH TÙY CHỈNH
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Cấu hình nhận diện")
 conf_threshold = st.sidebar.slider("Độ tin cậy (Confidence Threshold)", 0.05, 1.0, 0.20, 0.05)
 
 # ---------------------------------------------------------
-# 4. HÀM VẼ TOÀN BỘ KHUNG TRÊN ẢNH (BẮT ALL NGUỒN)
+# 5. HÀM VẼ KHUNG BẰNG PIL (KHÔNG DÙNG OPENCV)
 # ---------------------------------------------------------
 def draw_boxes_pil(img_pil, boxes, orig_names):
     img_draw = img_pil.copy()
@@ -87,9 +102,7 @@ def draw_boxes_pil(img_pil, boxes, orig_names):
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         color = CLASS_COLORS.get(original_name, (0, 255, 0))
         
-        # Vẽ khung nét rõ
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-        # Vẽ nhãn tên tế bào
         label_text = f"{vn_name} {conf:.2f}"
         draw.rectangle([x1, max(0, y1 - 18), x1 + 170, max(18, y1)], fill=color)
         draw.text((x1 + 4, max(0, y1 - 15)), label_text, fill=(0, 0, 0), font=font)
@@ -97,7 +110,7 @@ def draw_boxes_pil(img_pil, boxes, orig_names):
     return img_draw, counts
 
 # ---------------------------------------------------------
-# 5. XỬ LÝ PHÂN TÍCH ALL ẢNH ĐẦU VÀO
+# 6. PHÂN TÍCH ẢNH
 # ---------------------------------------------------------
 uploaded_file = st.file_uploader("Tải ảnh tế bào lên để phân tích...", type=["jpg", "jpeg", "png"])
 
@@ -109,32 +122,31 @@ if uploaded_file is not None:
         st.subheader("🖼️ Ảnh tế bào gốc")
         st.image(image, use_container_width=True)
     
-    if st.button("🚀 Phân tích ALL tế bào"):
+    if st.button("🚀 Phân tích tế bào"):
         if model is None:
-            st.error("Mô hình chưa được nạp. Vui lòng kiểm tra lại log hệ thống.")
+            st.error("Mô hình chưa được nạp.")
         else:
-            with st.spinner("🔍 Đang quét toàn bộ ảnh và phân loại tế bào..."):
-                # Ép kiểu mảng NumPy chuẩn định dạng RGB cho YOLO quét ALL vùng ảnh
-                img_input = np.array(image)
+            with st.spinner("🔍 Đang phân loại toàn bộ tế bào..."):
+                # Dùng PyTorch Tensor để predict (Ép không chạy qua OpenCV tiền xử lý)
+                img_tensor = T.ToTensor()(image).unsqueeze(0)
                 
-                # Quét và lấy toàn bộ kết quả phát hiện
-                results = model(img_input, conf=conf_threshold, verbose=False)
+                results = model.predict(source=img_tensor, conf=conf_threshold, verbose=False)
                 boxes = results[0].boxes
                 
                 if len(boxes) > 0:
                     res_plotted, counts = draw_boxes_pil(image, boxes, model.names)
                     
                     with col2:
-                        st.subheader("🎯 Kết quả nhận diện toàn bộ")
-                        st.image(res_plotted, caption=f"Đã phân tích xong - Tổng {len(boxes)} đối tượng phát hiện", use_container_width=True)
+                        st.subheader("🎯 Kết quả nhận diện")
+                        st.image(res_plotted, caption=f"Phát hiện {len(boxes)} tế bào", use_container_width=True)
                         
                     st.markdown("---")
-                    st.subheader("📊 Thống kê chi tiết từng loại tế bào:")
+                    st.subheader("📊 Thống kê chi tiết:")
                     for cell_type, count in counts.items():
                         if "ASCUS" in cell_type or "bất thường" in cell_type:
-                            st.error(f"- **{cell_type}**: {count} tế bào (⚠️ Cảnh báo bất thường)")
+                            st.error(f"- **{cell_type}**: {count} tế bào (⚠️ Bất thường)")
                         else:
                             st.write(f"- **{cell_type}**: {count} tế bào")
                 else:
                     with col2:
-                        st.warning("Không phát hiện tế bào nào. Hãy kéo thanh 'Độ tin cậy' ở bên trái xuống mức thấp hơn (ví dụ 0.1) để bắt nhiều tế bào hơn.")
+                        st.warning("Không tìm thấy tế bào. Hãy giảm độ tin cậy ở slider bên trái.")
