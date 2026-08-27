@@ -1,12 +1,16 @@
 import os
+import sys
+
+# Khóa tất cả các lời gọi GUI của OpenCV trước khi import bất kỳ thư viện nào
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
 import urllib.request
 import streamlit as st
 import torch
 from PIL import Image, ImageDraw, ImageFont
 
-# ---------------------------------------------------------
 # 1. CẤU HÌNH GIAO DIỆN STREAMLIT
-# ---------------------------------------------------------
 st.set_page_config(
     page_title="Corneal & StemCell Vision AI",
     page_icon="🔬",
@@ -58,9 +62,7 @@ CELL_MORPHOLOGY_DB = {
     }
 }
 
-# ---------------------------------------------------------
 # 2. NẠP MÔ HÌNH VỚI KHẮC PHỤC LỖI PYTORCH & ULTRALYTICS
-# ---------------------------------------------------------
 @st.cache_resource
 def load_yolo_model():
     if not os.path.exists(MODEL_PATH):
@@ -72,7 +74,7 @@ def load_yolo_model():
         with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
             out_file.write(response.read())
     
-    # Sửa lỗi PyTorch 2.6+ weights_only bằng monkey-patch an toàn
+    # Bypass lỗi PyTorch 2.6+ weights_only
     torch_load_original = torch.load
     def patched_torch_load(*args, **kwargs):
         kwargs['weights_only'] = False
@@ -92,15 +94,10 @@ try:
 except Exception as e:
     st.sidebar.error(f"❌ Lỗi nạp mô hình: {e}")
 
-# ---------------------------------------------------------
-# 3. THANH BÊN TÙY CHỈNH THAM SỐ
-# ---------------------------------------------------------
+# 3. GIAO DIỆN & XỬ LÝ ẢNH
 st.sidebar.header("⚙️ Cấu hình nhận diện")
 conf_threshold = st.sidebar.slider("Ngưỡng độ tin cậy (Confidence)", 0.05, 1.0, 0.20, 0.05)
 
-# ---------------------------------------------------------
-# 4. HÀM VẼ KHUNG THUẦN PIL (TRÁNH LỖI OPENCV/LIBGL)
-# ---------------------------------------------------------
 def draw_boxes_pil(img_pil, boxes, orig_names):
     img_draw = img_pil.copy()
     draw = ImageDraw.Draw(img_draw)
@@ -129,9 +126,6 @@ def draw_boxes_pil(img_pil, boxes, orig_names):
         
     return img_draw, counts
 
-# ---------------------------------------------------------
-# 5. XỬ LÝ ẢNH ĐẦU VÀO VÀ HIỂN THỊ KẾT QUẢ
-# ---------------------------------------------------------
 uploaded_file = st.file_uploader("Tải ảnh soi kính hiển vi...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
